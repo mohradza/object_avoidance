@@ -44,36 +44,39 @@ def draw_optic_flow_field(gray_image, points, flow):
     cv2.waitKey(1)
 
 def draw_optic_flow_signal(color_image, flow_signal, gamma_size):
-    gamma_ring_points = []
     signal_loc_x = []
     signal_loc_y = []
     gamma_x = []
     gamma_y = []
 
-    x_center = int(color_image.shape[0]/2)
-    y_center = int(color_image.shape[1]/2)
+    x_center = int(color_image.shape[1]/2)
+    y_center = int(color_image.shape[0]/2)
     color_red = [0,0,255]
     color_green = [0,255,0]
     linewidth = 1
     
-    radius = 50
-    sig_scale = 50
-    gamma = np.linspace(-math.pi, math.pi - .017, gamma_size)
+    radius = 20
+    sig_scale = 25
+    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
 
     for i in range(gamma_size):
-        gamma_x.append(x_center - int(radius*math.cos(gamma[i])))
-        gamma_y.append(y_center + int(radius*math.sin(gamma[i])));
-        signal_loc_x.append(gamma_x[i] - int(sig_scale*flow_signal[i]*math.cos(gamma[i])))
-        signal_loc_y.append(gamma_y[i] + int(sig_scale*flow_signal[i]*math.sin(gamma[i])))
+        gamma_x.append(x_center + int(radius*math.sin(gamma[i])))
+        gamma_y.append(y_center - int(radius*math.cos(gamma[i])))
+    for i in range(gamma_size):
+        signal_loc_x.append(gamma_x[i] + int(sig_scale*flow_signal[i]*math.sin(gamma[i])))
+        signal_loc_y.append(gamma_y[i] - int(sig_scale*flow_signal[i]*math.cos(gamma[i])))
+
+#    cv2.line(color_image, (x_center, y_center), (x_center+50,y_center),color_green, 1)
+
 
     for i in range(gamma_size):
         if i == 0:
-            cv2.line(color_image, (gamma_y[i], gamma_x[i]), (gamma_y[29], gamma_x[29]), color_green, 1)
-            cv2.line(color_image, (signal_loc_y[i], signal_loc_x[i]), (signal_loc_y[29], signal_loc_x[29]), color_red, linewidth)
+            cv2.line(color_image, (gamma_x[i], gamma_y[i]), (gamma_x[29], gamma_y[29]), color_green, 1)
+            cv2.line(color_image, (signal_loc_x[i], signal_loc_y[i]), (signal_loc_x[29], signal_loc_y[29]), color_red, linewidth)
            # cv2.line(color_image, (gamma_y[i], gamma_x[i]), (gamma_y[29], gamma_x[29]), color_green, 1)
         else:
-            cv2.line(color_image, (gamma_y[i], gamma_x[i]), (gamma_y[i-1], gamma_x[i-1]), color_green, 1)
-            cv2.line(color_image, (signal_loc_y[i], signal_loc_x[i]), (signal_loc_y[i-1], signal_loc_x[i-1]), color_red, linewidth)
+            cv2.line(color_image, (gamma_x[i], gamma_y[i]), (gamma_x[i-1], gamma_y[i-1]), color_green, 1)
+            cv2.line(color_image, (signal_loc_x[i], signal_loc_y[i]), (signal_loc_x[i-1], signal_loc_y[i-1]), color_red, linewidth)
            # cv2.line(color_image, (gamma_y[i], gamma_x[i]), (gamma_y[i-1], gamma_x[i-1]), color_green, 1)
 
     cv2.imshow('optic_flow_signal', color_image)
@@ -82,17 +85,18 @@ def draw_optic_flow_signal(color_image, flow_signal, gamma_size):
 
 def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     points_to_track = []
-    x_center = int(image.shape[0]/2)
-    y_center = int(image.shape[1]/2)
+    x_center = int(image.shape[1]/2)
+    y_center = int(image.shape[0]/2)
     # This needs to be changed for 320 x 240 image and parabolics mirror
     inner_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 2
+    dr = 1
 
     for ring in range(num_rings):
        for g in gamma:
-          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+#          g = 1.57;
+          new_point = [x_center + int((inner_radius+ring*dr)*math.sin(g)), y_center - int((inner_radius+ring*dr)*math.cos(g))]
           points_to_track.append(new_point)
 
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
@@ -102,16 +106,16 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
 
 def define_gamma_ring_points(image, gamma_size):
     gamma_ring_points = []
-    ring_radius = 55
+    ring_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
-    x_center = int(image.shape[0]/2)
-    y_center = int(image.shape[1]/2)
+    x_center = int(image.shape[1]/2)
+    y_center = int(image.shape[0]/2)
     for g in gamma:
-        new_point = [y_center - int(ring_radius*math.sin(g)), x_center - int(ring_radius*math.cos(g))]
+        new_point = [x_center + int(ring_radius*math.sin(g)), y_center - int(ring_radius*math.cos(g))]
         gamma_ring_points.append(new_point)
     
     gamma_ring_points = np.array(gamma_ring_points, dtype=np.float32)
-
+    gamma_ring_points = gamma_ring_points.reshape(gamma_ring_points.shape[0],1,gamma_ring_points.shape[1])
     return gamma_ring_points
     
 def average_ring_flow(self, num_rings, gamma_size,flow):
@@ -124,18 +128,11 @@ def average_ring_flow(self, num_rings, gamma_size,flow):
                 # According to Jishnu's MATLAB code:
                 #u = flow[index][1,0]
                 # v = flow[index][0,0]
-                total_OF_tang[i] = total_OF_tang[i]+(-1*flow[index][0,0]*math.cos(gamma[i])+flow[index][0,1]*math.sin(gamma[i]))
+                total_OF_tang[i] = total_OF_tang[i] + (flow[index][0,0]*math.sin(gamma[i])+flow[index][0,1]*math.cos(gamma[i]))
 
     total_OF_tang[:] = [x / num_rings for x in total_OF_tang]
 
-    # Reformat so that optic flow is -pi -> pi
-    for i in range(gamma_size):
-        if (i < (gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[gamma_size//2 - i]
-        if (i >=(gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[(gamma_size + gamma_size//2 - 1)-i]
-
-    return OF_reformat
+    return total_OF_tang
 
 def FOF_control_calc(gamma_size, OF_tang_prev_filtered, OF_tang_curr):
     
@@ -150,7 +147,7 @@ def FOF_control_calc(gamma_size, OF_tang_prev_filtered, OF_tang_curr):
     c_d = .25
 
     # Initialize the gamma vector [-pi -> ~pi, 30]
-    gamma = np.linspace(-math.pi, math.pi-.017, gamma_size)
+    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1] # Delta Gamma
     LP_OF = [0.0]*gamma_size
     R_FOF = [0.0]*gamma_size
@@ -275,21 +272,22 @@ class Optic_Flow_Calculator:
             new_position_of_tracked_points, status, error = cv2.calcOpticalFlowPyrLK(self.prev_image, curr_image, self.points_to_track, None, **self.lk_params)
 
             # calculate flow field
+#            flow = new_position_of_tracked_points - self.points_to_track
             flow = new_position_of_tracked_points - self.points_to_track
-
             # draw the flow field
-            # draw_optic_flow_field(curr_image, self.points_to_track, flow)
+#            draw_optic_flow_field(curr_image, self.points_to_track, flow)
 
             # Compute Tangential OF
             self.OF_tang_prev = self.OF_tang_curr
-            self.OF_tang_curr = average_ring_flow(self, self.num_rings,self.gamma_size,flow)
+            self.OF_tang_curr = average_ring_flow(self, self.num_rings, self.gamma_size, flow)
                       
             # Compute Flow of Flow datasets and yaw control command
             FOF_yaw_rate_cmd, R_FOF, self.OF_tang_prev_filtered, FOF_thresh = FOF_control_calc(self.gamma_size, self.OF_tang_prev_filtered, self.OF_tang_curr)            
   
             # Draw the superimposed flow signal
             image_out = draw_optic_flow_signal(color_image, R_FOF, self.gamma_size)
-#            image_out = color_image
+#            image_out = draw_optic_flow_signal(color_image, self.OF_tang_curr, self.gamma_size)
+#            image_out = draw_optic_flow_field(curr_image, self.points_to_track, flow)
             # Publish the images
            # image_out_msg = self.bridge.cv2_to_imgmsg(image_out, "rgb8")
   #          self.image_out_pub.publish(self.bridge.cv2_to_imgmsg(image_out,"rgb8"))
@@ -298,8 +296,8 @@ class Optic_Flow_Calculator:
             msg = FOF_and_ResidualMsg()
             msg.Qdot_meas = self.OF_tang_curr
             msg.FOF_OF_SF = R_FOF
-            msg.FOF_threshold = FOF_thresh
-            msg.FOF_yaw_rate_cmd = FOF_yaw_rate_cmd
+#            msg.FOF_threshold = FOF_thresh
+#            msg.FOF_yaw_rate_cmd = FOF_yaw_rate_cmd
 #            msg.FR_Qdot_SF = Qdot_SF 
 #            msg.FR_yaw_rate_cmd = FR_yaw_rate_cmd
 #            msg.FR_threshold = FR_thresh  
@@ -307,10 +305,10 @@ class Optic_Flow_Calculator:
             self.FOF_pub.publish(msg)
 
             # Publish yaw rate command
-            msg = YawRateCmdMsg()
-            msg.header.stamp = rospy.Time.now()
-            msg.yaw_rate_cmd = FOF_yaw_rate_cmd
-            self.yaw_rate_cmd_pub.publish(msg)
+#            msg = YawRateCmdMsg()
+#            msg.header.stamp = rospy.Time.now()
+#            msg.yaw_rate_cmd = FOF_yaw_rate_cmd
+#            self.yaw_rate_cmd_pub.publish(msg)
 
 
             # save current image and time for next loop

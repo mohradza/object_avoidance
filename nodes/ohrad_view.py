@@ -4,7 +4,7 @@
 import roslib, rospy
 
 # opencv imports
-import cv2, cv
+import cv2
 
 # numpy imports - basic math and matrix manipulation
 import numpy as np
@@ -15,7 +15,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 
 # message imports specific to this package
-from optic_flow_code.msg import OpticFlowMsg
+from object_avoidance.msg import OpticFlowMsg
 from std_msgs.msg import Float32MultiArray
 ################################################################################
 
@@ -43,15 +43,15 @@ def draw_optic_flow_field(gray_image, points, flow):
     
 def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     points_to_track = []
-    x_center = int(image.shape[0]/2)
-    y_center = int(image.shape[1]/2)
-    inner_radius = 160
+    x_center = int(image.shape[1]/2)
+    y_center = int(image.shape[0]/2)
+    inner_radius = 50
     gamma = np.linspace(0, 2*math.pi, gamma_size)
-    dr = 5
+    dr = 2
     # gamma1 = math.pi/2
     for ring in range(num_rings):
         for g in gamma:
-            new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+            new_point = [x_center + int((inner_radius+ring*dr)*math.sin(g)), y_center - int((inner_radius+ring*dr)*math.cos(g))]
             points_to_track.append(new_point)
     
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
@@ -89,7 +89,7 @@ class Optic_Flow_Calculator:
         self.last_time = 0
         
         # Lucas Kanade Optic Flow parameters
-        self.lk_params = dict( winSize  = (75,75),
+        self.lk_params = dict( winSize  = (15,15),
                                maxLevel = 2,
                                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
         
@@ -105,10 +105,11 @@ class Optic_Flow_Calculator:
         # Define image size parameters
         self.rows = 0
         self.cols = 0
-        self.num_rings = 7
+        self.num_rings = 5
         self.gamma_size = 50
 
     def image_callback(self,image):
+        rospy.print("cb")
         try: # if there is an image
             # Acquire the image, and convert to single channel gray image
             curr_image = self.bridge.imgmsg_to_cv2(image, "mono8")
@@ -121,8 +122,10 @@ class Optic_Flow_Calculator:
             # optional: resize the image
             curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
 
+            curr_image = cv2.flip(curr_image, 1)
+
             # optional: add Gaussian blur
-            curr_image = cv2.GaussianBlur(curr_image,(5,5),0)
+            # curr_image = cv2.GaussianBlur(curr_image,(5,5),0)
              
             # Get time stamp
             secs = image.header.stamp.secs

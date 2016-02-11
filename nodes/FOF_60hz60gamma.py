@@ -44,19 +44,6 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
   
     return points_to_track
 
-def define_gamma_ring_points(image, gamma_size):
-    gamma_ring_points = []
-    ring_radius = 55
-    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
-    x_center = int(image.shape[0]/2)
-    y_center = int(image.shape[1]/2)
-    for g in gamma:
-        new_point = [y_center - int(ring_radius*math.sin(g)), x_center - int(ring_radius*math.cos(g))]
-        gamma_ring_points.append(new_point)
-    
-    gamma_ring_points = np.array(gamma_ring_points, dtype=np.float32)
-
-    return gamma_ring_points
     
 def average_ring_flow(self, num_rings, gamma_size,flow):
     total_OF_tang = [0]*gamma_size
@@ -71,15 +58,7 @@ def average_ring_flow(self, num_rings, gamma_size,flow):
                 total_OF_tang[i] = total_OF_tang[i]+(-1*flow[index][0,0]*math.cos(gamma[i])+flow[index][0,1]*math.sin(gamma[i]))
 
     total_OF_tang[:] = [x / num_rings for x in total_OF_tang]
-
-    # Reformat so that optic flow is -pi -> pi
-    for i in range(gamma_size):
-        if (i < (gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[gamma_size//2 - i]
-        if (i >=(gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[(gamma_size + gamma_size//2 - 1)-i]
-
-    return OF_reformat
+    return total_OF_tang
 
 def FOF_control_calc(gamma_size, OF_tang_prev_filtered, OF_tang_curr):
     
@@ -164,6 +143,7 @@ class Optic_Flow_Calculator:
         self.cols = 0
         self.num_rings = 5
         self.gamma_size = 40
+        self.pixel_scale = 6.0
         yaw_rate_cmd = 0
         self.OF_tang_prev = [0.0]*self.gamma_size
         self.OF_tang_prev_filtered = [0.0]*self.gamma_size
@@ -205,7 +185,7 @@ class Optic_Flow_Calculator:
                 self.cols = curr_image.shape[1]
                 self.last_time = curr_time
                 self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.num_rings)
-                self.gamma_ring_points = define_gamma_ring_points(curr_image, self.gamma_size)
+#                self.gamma_ring_points = define_gamma_ring_points(curr_image, self.gamma_size)
                 return # skip the rest of this loop
 
             # get time between images
@@ -217,7 +197,7 @@ class Optic_Flow_Calculator:
             new_position_of_tracked_points, status, error = cv2.calcOpticalFlowPyrLK(self.prev_image, curr_image, self.points_to_track, None, **self.lk_params)
 
             # calculate flow field
-            flow = (new_position_of_tracked_points - self.points_to_track)/dt
+            flow = ((new_position_of_tracked_points - self.points_to_track)*self.pixel_scale)/dt
 
             # Compute Tangential OF
             self.OF_tang_prev = self.OF_tang_curr

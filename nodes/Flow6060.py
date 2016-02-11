@@ -23,10 +23,9 @@ from std_msgs.msg import Bool
 
 def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     points_to_track = []
-    x_center = int(image.shape[0]/2)
-    y_center = int(image.shape[1]/2)
+    x_center = int(image.shape[1]/2)
+    y_center = int(image.shape[0]/2)
     # i.r. good for 160x120 image size
-    #inner_radius = 25
     inner_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
@@ -34,7 +33,7 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
 
     for ring in range(num_rings):
        for g in gamma:
-          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+          new_point = [x_center + int((inner_radius+ring*dr)*math.sin(g)), y_center - int((inner_radius+ring*dr)*math.cos(g))]
           points_to_track.append(new_point)
 
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
@@ -69,7 +68,7 @@ class Optic_Flow_Calculator:
         self.cols = 0
         self.num_rings = 5
         self.gamma_size = 60
-        self.flow_status_msg = False
+        self.pixel_scale = 6
 
     def image_callback(self,image):
         try: # if there is an image
@@ -121,7 +120,7 @@ class Optic_Flow_Calculator:
             new_position_of_tracked_points, status, error = cv2.calcOpticalFlowPyrLK(self.prev_image, curr_image, self.points_to_track, None, **self.lk_params)
 
             # calculate flow field
-            flow = (new_position_of_tracked_points - self.points_to_track)/dt
+            flow = ((new_position_of_tracked_points - self.points_to_track)/dt)*self.pixel_scale;
 
             # Output the flow rings
             msg = FlowRingOutMsg()
