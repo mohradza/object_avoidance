@@ -17,51 +17,31 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 
 # message imports specific to this package
-from small_object.msg import OpticFlowMsg
-from small_object.msg import FourierCoefsMsg
-from small_object.msg import YawRateCmdMsg
-from small_object.msg import FOF_and_ResidualMsg
+from object_avoidance.msg import OpticFlowMsg
+from object_avoidance.msg import FourierCoefsMsg
+from object_avoidance.msg import YawRateCmdMsg
+from object_avoidance.msg import FOF_and_ResidualMsg
 from std_msgs.msg import Float32
-
-
-def draw_optic_flow_field(gray_image, points, flow):
-    '''
-    gray_image: opencv gray image, e.g. shape = (width, height)
-    points: points at which optic flow is tracked, e.g. shape = (npoints, 1, 2)
-    flow: optic flow field, should be same shape as points
-    '''
-    color_img = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
-    color_red = [0,0,255] # bgr colorspace
-    linewidth = 1
-    for i, point in enumerate(points):
-        x = point[0,0]
-        y = point[0,1]
-        vx = flow[i][0,0]
-        vy = flow[i][0,1]
-        cv2.line(color_img, (x,y), (x+vx, y+vy), color_red, linewidth) # draw a red line from the point with vector = [vx, vy]        
-
-    cv2.imshow('optic_flow_field',color_img)
-    cv2.waitKey(1)
 
 def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     points_to_track = []
     x_center = int(image.shape[0]/2)
     y_center = int(image.shape[1]/2)
-    # This needs to be changed for 320 x 240 image and parabolics mirror
-    inner_radius = 100
+    inner_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 5
+    dr = 2
 
     for ring in range(num_rings):
-        for g in gamma:
-            new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
-            points_to_track.append(new_point)
+       for g in gamma:
+          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+          points_to_track.append(new_point)
 
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
     points_to_track = points_to_track.reshape(points_to_track.shape[0], 1, points_to_track.shape[1]) # for some reason this needs to be shape (npoints, 1, 2)
+  
     return points_to_track
-
+    
 def average_ring_flow(self, num_rings, gamma_size,flow):
     total_OF_tang = [0]*gamma_size
     OF_reformat = [0]*gamma_size
@@ -78,79 +58,22 @@ def average_ring_flow(self, num_rings, gamma_size,flow):
 
     # Reformat so that optic flow is -pi -> pi
     for i in range(gamma_size):
-        # For the case of gamma_size = 30
-        # gamma_size/2 = 15
         if (i < (gamma_size//2)):
             OF_reformat[i] = -total_OF_tang[gamma_size//2 - i]
-        # THIS IS SPECIFIC TO gamma_size = 30!!
         if (i >=(gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[44-i]
+            OF_reformat[i] = -total_OF_tang[(gamma_size + gamma_size//2 -1)-i]
 
     return OF_reformat
 
-def FOF_control_calc(gamma_size, OF_tang_prev_filtered, OF_tang_curr):
-    
-    # Flow of Flow Smoothing Parameters
-    dt = .05
-    tau = .75
-    alpha = dt/(tau+dt)
-
-    # Controller Parameters
-    k_0 = .3
-    c_psi = .1
-    c_d = .25
-
-    # Initialize the gamma vector [-pi -> ~pi, 30]
-    gamma = np.linspace(-math.pi, math.pi-.017, gamma_size)
-    dg = gamma[2] - gamma[1] # Delta Gamma
-    LP_OF = [0.0]*gamma_size
-    R_FOF = [0.0]*gamma_size
-
-    # Run the Low Pass filter 
-    # In this case, self.OF_tang_prev is the unflitered OF signal
-    # from the previous time step.
-    for i in range(gamma_size):
-        LP_OF[i] = alpha*OF_tang_curr[i] + (1-alpha)*OF_tang_prev_filtered[i]
-        
-    # Final flow of flow output
-    for i in range(gamma_size-1):
-        R_FOF[i] = LP_OF[i]*OF_tang_curr[i+1] - OF_tang_curr[i]*LP_OF[i+1]
-    
-    R_FOF[29] = 0.0
-    
-    # Dynamic Threshold
-    mean = np.mean(R_FOF)
-    std_dev = 0.0
-    for i in range(gamma_size):
-        std_dev += np.square(R_FOF[i] - mean)
-
-    std_dev = np.sqrt(std_dev/(gamma_size))
-    min_threshold = 3*std_dev 
- 
-    # Extract r_0 and d_0 from processed  signal
-    index_max = np.argmax(R_FOF)
-    d_0_new = R_FOF[index_max]
-
-
-    if d_0_new > min_threshold:
-        # Find the gamma location
-        r_0_new = gamma[index_max]
-
-        # Calculate the control signal
-        yaw_rate_cmd_new = k_0*np.sign(r_0)*math.exp(-c_psi*math.fabs(r_0))*math.exp(-c_d*1/(math.fabs(d_0)))
-    else:
-        yaw_rate_cmd = 0.0
-
-    return yaw_rate_cmd, R_FOF, LP_OF, min_threshold
 
 # Fourier Residual Method
 def control_calc(num_harmonics, gamma_size, Qdot_meas):
     a_0 = 0.0
 
     # Controller Parameters
-    k_0 = .3
+    k_0 = .5
     c_psi = .1
-    c_d = .25
+    c_d = .1
 
     gamma = np.linspace(-math.pi, math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
@@ -192,8 +115,10 @@ def control_calc(num_harmonics, gamma_size, Qdot_meas):
         std_dev += np.square(Qdot_SF[i] - mean)
 
     std_dev = np.sqrt(std_dev/gamma_size)
-    min_threshhold = 3*std_dev
-
+    # Dynamic Threshold
+#    min_threshold = 3*std_dev
+    # Static Threshold
+    min_threshold = .3
 
     # Extract r_0 and d_0 from SF signal
     index_max = np.argmax(Qdot_SF)
@@ -227,14 +152,13 @@ class Optic_Flow_Calculator:
                                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
         
         # FOF and Residual SF publishing
-        self.FOF_pub = rospy.Publisher("FOF_data", FOF_and_ResidualMsg, queue_size=10)
+        self.FR_pub = rospy.Publisher("FR_data", FOF_and_ResidualMsg, queue_size=10)
 
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
 
         # Publish yaw rate command
         self.yaw_rate_cmd_pub = rospy.Publisher("controller_out/yaw_rate_cmd", YawRateCmdMsg, queue_size=10)
-
 
         # Define image size parameters
         self.rows = 0
@@ -258,7 +182,7 @@ class Optic_Flow_Calculator:
                     curr_image = curr_image[:,:,0] # shape should now be (rows, columns)
 
             # optional: resize the image
-           # curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
+            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
 
             # Flip the image (mirror vertically)
             curr_image = cv2.flip(curr_image, 1)
@@ -297,29 +221,26 @@ class Optic_Flow_Calculator:
             self.OF_tang_prev = self.OF_tang_curr
             self.OF_tang_curr = average_ring_flow(self, self.num_rings,self.gamma_size,flow)
                       
-            # Compute Flow of Flow datasets and yaw control command
-            FOF_yaw_rate_cmd, R_FOF, self.OF_tang_prev_filtered, FOF_thresh = FOF_control_calc(self.gamma_size, self.OF_tang_prev_filtered, self.OF_tang_curr)            
-  
             # Compute Fourier coefficients and yaw control Command
             FR_yaw_rate_cmd, Qdot_SF, FR_thresh = control_calc(self.num_harmonics, self.gamma_size, self.OF_tang_curr)
 
             ##### ADD ALL NECESSARY MESSAGES ######
             msg = FOF_and_ResidualMsg()
             msg.Qdot_meas = self.OF_tang_curr
-            msg.FOF_OF_SF = R_FOF
-            msg.FOF_threshold = FOF_thresh
-            msg.FOF_yaw_rate_cmd = FOF_yaw_rate_cmd
+#            msg.FOF_OF_SF = R_FOF
+#            msg.FOF_threshold = FOF_thresh
+#            msg.FOF_yaw_rate_cmd = FOF_yaw_rate_cmd
             msg.FR_Qdot_SF = Qdot_SF 
             msg.FR_yaw_rate_cmd = FR_yaw_rate_cmd
             msg.FR_threshold = FR_thresh  
 
-            self.FOF_pub.publish(msg)
+            self.FR_pub.publish(msg)
 
             # Publish yaw rate command
-#            msg = YawRateCmdMsg()
-#            msg.header.stamp = rospy.Time.now()
-#            msg.yaw_rate_cmd = FOF_yaw_rate_cmd
-#            self.yaw_rate_cmd_pub.publish(msg)
+            msg = YawRateCmdMsg()
+            msg.header.stamp = rospy.Time.now()
+            msg.yaw_rate_cmd = FR_yaw_rate_cmd
+            self.yaw_rate_cmd_pub.publish(msg)
 
 
             # save current image and time for next loop

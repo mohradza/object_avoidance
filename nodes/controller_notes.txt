@@ -1,0 +1,47 @@
+Working Optic Flow Controllers
+Author: Michael Ohradzansky, Fall 2017
+
+********************
+**FOURIER RESIDUAL**
+********************
+Scripts that use fourier residuals for computing SF OF
+
+**
+To run FR at 60 hz with 30 gamma locations:
+FR_60hz30gamma
+- Input: 360x240 images @ 60hz
+- Output: FR_data @ 30 gamma locations, 60hz
+
+**
+To run FR at 60 hz with 30 gamma locations:
+FR_60hz60gamma
+- Input: 360x240 images @ 60hz
+- Output: FR_data @ 60 gamma locations, **limited to ~48hz**
+
+
+
+********************
+**  FLOW OF FLOW  **
+********************
+Scripts that use flow of flow method for computing SF OF
+
+**
+To run FOF at 60hz with 60 gamma locations:
+FOF_60hz60gamma.py
+- Input: 360x240 images @ 60hz
+- Output: FOF_data @ 60 gamma locationsi
+- Benchtested flow data only
+
+**
+To run FOF at 60hz with 30 gamma locations:
+FOF_60hz30gamma.py
+- Input: 360x240 images @ 60hz
+- Output: FOF_data @ 30 gamma locations
+- Benchtested flow data only
+
+** VIEWER **
+To view FOF data as a ring superimposed on the raw image:
+FOF_viewer.py
+- Input: 360x240 images @ 60hz
+- Output: Raw image feed with FOF data
+
