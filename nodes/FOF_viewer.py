@@ -289,7 +289,7 @@ class Optic_Flow_Calculator:
   
             # Draw the superimposed flow signal
             image_out = draw_optic_flow_signal(color_image, R_FOF, self.gamma_size)
-
+#            image_out = color_image
             # Publish the images
            # image_out_msg = self.bridge.cv2_to_imgmsg(image_out, "rgb8")
   #          self.image_out_pub.publish(self.bridge.cv2_to_imgmsg(image_out,"rgb8"))

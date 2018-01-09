@@ -163,7 +163,7 @@ class Optic_Flow_Calculator:
         self.rows = 0
         self.cols = 0
         self.num_rings = 5
-        self.gamma_size = 60
+        self.gamma_size = 40
         yaw_rate_cmd = 0
         self.OF_tang_prev = [0.0]*self.gamma_size
         self.OF_tang_prev_filtered = [0.0]*self.gamma_size

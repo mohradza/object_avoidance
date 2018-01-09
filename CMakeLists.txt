@@ -52,6 +52,7 @@ add_message_files(
    FourierCoefsMsg.msg
    YawRateCmdMsg.msg
    FOF_and_ResidualMsg.msg
+   FlowRingOutMsg.msg
 )
 
 ## Generate services in the 'srv' folder

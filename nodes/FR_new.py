@@ -23,18 +23,18 @@ from object_avoidance.msg import YawRateCmdMsg
 from object_avoidance.msg import FOF_and_ResidualMsg
 from std_msgs.msg import Float32
 
-def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
+def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings, cos_g, sin_g):
     points_to_track = []
     x_center = int(image.shape[0]/2)
     y_center = int(image.shape[1]/2)
-    inner_radius = 50
+    inner_radius = 25
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 2
+    dr = 1
 
     for ring in range(num_rings):
-       for g in gamma:
-          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+       for i in range(gamma_size):
+          new_point = [y_center - int((inner_radius+ring*dr)*sin_g[i]), x_center - int((inner_radius+ring*dr)*cos_g[i])]
           points_to_track.append(new_point)
 
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
@@ -42,17 +42,16 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
   
     return points_to_track
     
-def average_ring_flow(self, num_rings, gamma_size,flow):
+def average_ring_flow(self, num_rings, gamma_size,cos_g, sin_g, flow):
     total_OF_tang = [0]*gamma_size
     OF_reformat = [0]*gamma_size
-    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     for ring in range(num_rings):
         for i in range(gamma_size):
                 index = ring*gamma_size + i
                 # According to Jishnu's MATLAB code:
                 #u = flow[index][1,0]
                 # v = flow[index][0,0]
-                total_OF_tang[i] = total_OF_tang[i]+(-1*flow[index][0,0]*math.cos(gamma[i])+flow[index][0,1]*math.sin(gamma[i]))
+                total_OF_tang[i] = total_OF_tang[i]+(-1*flow[index][0,0]*cos_g[i]+flow[index][0,1]*sin_g[i])
 
     total_OF_tang[:] = [x / num_rings for x in total_OF_tang]
 
@@ -67,7 +66,7 @@ def average_ring_flow(self, num_rings, gamma_size,flow):
 
 
 # Fourier Residual Method
-def control_calc(num_harmonics, gamma_size, Qdot_meas):
+def control_calc(num_harmonics, gamma_size, cos_gh, sin_gh, Qdot_meas):
     a_0 = 0.0
 
     # Controller Parameters
@@ -95,15 +94,15 @@ def control_calc(num_harmonics, gamma_size, Qdot_meas):
     # Compute the rest of the coefficients
     for n in range(num_harmonics):
         for i in range(gamma_size):
-            a[n] = a[n] + math.cos((n+1)*gamma[i])*Qdot_meas[i]
-            b[n] = b[n] + math.sin((n+1)*gamma[i])*Qdot_meas[i]
+            a[n] = a[n] + cos_gh[n][i]*Qdot_meas[i]
+            b[n] = b[n] + sin_gh[n][i]*Qdot_meas[i]
         a[n] = a[n]*dg/math.pi
         b[n] = b[n]*dg/math.pi
 
     # Calculate Qdot_WF
     for i in range(gamma_size):
         for n in range(num_harmonics):
-            Qdot_WF[i] = Qdot_WF[i] + a[n]*math.cos((n+1)*gamma[i]) + b[n]*math.sin((n+1)*gamma[i])
+            Qdot_WF[i] = Qdot_WF[i] + a[n]*cos_gh[n][i] + b[n]*sin_gh[n][i]
         Qdot_WF[i] = Qdot_WF[i] + a_0/2.0
 
     # Calculate Qdot_SF
@@ -164,12 +163,26 @@ class Optic_Flow_Calculator:
         self.rows = 0
         self.cols = 0
         self.num_rings = 5
-        self.gamma_size = 40
+        self.gamma_size = 60
         self.num_harmonics = 4
         yaw_rate_cmd = 0
         self.OF_tang_prev = [0.0]*self.gamma_size
         self.OF_tang_prev_filtered = [0.0]*self.gamma_size
         self.OF_tang_curr = [0.0]*self.gamma_size        
+        self.gamma_list = np.linspace(0,2*math.pi-.017, self.gamma_size)
+        self.cos_g = [0.0]*self.gamma_size
+        self.sin_g = [0.0]*self.gamma_size
+        self.cos_gh = [[0.0 for i in range(self.gamma_size)] for j in range(self.num_harmonics)]
+        self.sin_gh = [[0.0 for i in range(self.gamma_size)] for g in range(self.num_harmonics)]
+        for i in range(self.gamma_size):
+            self.cos_g[i] = math.cos(self.gamma_list[i])
+            self.sin_g[i] = math.sin(self.gamma_list[i])
+
+        for n in range(self.num_harmonics):
+	    for i in range(self.gamma_size):
+               self.cos_gh[n][i] = math.cos((n+1)*self.gamma_list[i])
+               self.sin_gh[n][i] = math.sin((n+1)*self.gamma_list[i])
+
 
     def image_callback(self,image):
         rospy.loginfo_throttle(1, "img")
@@ -183,7 +196,7 @@ class Optic_Flow_Calculator:
                     curr_image = curr_image[:,:,0] # shape should now be (rows, columns)
 
             # optional: resize the image
-            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
+            curr_image = cv2.resize(curr_image, (0,0), fx=0.25, fy=0.25) 
 
             # Flip the image (mirror vertically)
             curr_image = cv2.flip(curr_image, 1)
@@ -202,7 +215,7 @@ class Optic_Flow_Calculator:
                 self.rows = curr_image.shape[0]
                 self.cols = curr_image.shape[1]
                 self.last_time = curr_time
-                self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.num_rings)
+                self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.num_rings, self.cos_g, self.sin_g)
                 return # skip the rest of this loop
 
             # get time between images
@@ -220,10 +233,10 @@ class Optic_Flow_Calculator:
 
             # Compute Tangential OF
             self.OF_tang_prev = self.OF_tang_curr
-            self.OF_tang_curr = average_ring_flow(self, self.num_rings,self.gamma_size,flow)
+            self.OF_tang_curr = average_ring_flow(self, self.num_rings, self.gamma_size, self.cos_g, self.sin_g, flow)
                       
             # Compute Fourier coefficients and yaw control Command
-            FR_yaw_rate_cmd, Qdot_SF, FR_thresh = control_calc(self.num_harmonics, self.gamma_size, self.OF_tang_curr)
+            FR_yaw_rate_cmd, Qdot_SF, FR_thresh = control_calc(self.num_harmonics, self.gamma_size, self.cos_gh, self.sin_gh, self.OF_tang_curr)
 
             ##### ADD ALL NECESSARY MESSAGES ######
             msg = FOF_and_ResidualMsg()

@@ -23,26 +23,31 @@ from object_avoidance.msg import YawRateCmdMsg
 from object_avoidance.msg import FOF_and_ResidualMsg
 from std_msgs.msg import Float32
 
-def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
+def define_rings_at_which_to_track_optic_flow(image, gamma_size, gamma, num_rings, cos_g, sin_g):
+  #  global gamma
     points_to_track = []
     x_center = int(image.shape[0]/2)
     y_center = int(image.shape[1]/2)
     inner_radius = 50
-    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
     dr = 2
 
-    for ring in range(num_rings):
-       for g in gamma:
-          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
-          points_to_track.append(new_point)
+#    cos_g = [cos(g) for g in gamma]
+#    for ring in range(num_rings):
+#       for g in gamma:
+#          new_point = [y_center - int((inner_radius+ring*dr)*math.sin(g)), x_center - int((inner_radius+ring*dr)*math.cos(g))]
+#          points_to_track.append(new_point)
 
+    for ring in range(num_rings):
+       for i in range(gamma_size):
+          new_point = [y_center - int((inner_radius+ring*dr)*sin_g[i]), x_center - int((inner_radius+ring*dr)*cos_g[i])]
+          points_to_track.append(new_point)
     points_to_track = np.array(points_to_track, dtype=np.float32) # note: float32 required for opencv optic flow calculations
     points_to_track = points_to_track.reshape(points_to_track.shape[0], 1, points_to_track.shape[1]) # for some reason this needs to be shape (npoints, 1, 2)
-  
     return points_to_track
-    
-def average_ring_flow(self, num_rings, gamma_size,flow):
+
+def average_ring_flow(self, num_rings, gamma_size, gamma, flow):
+ #   global gamma
     total_OF_tang = [0]*gamma_size
     OF_reformat = [0]*gamma_size
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
@@ -67,15 +72,14 @@ def average_ring_flow(self, num_rings, gamma_size,flow):
 
 
 # Fourier Residual Method
-def control_calc(num_harmonics, gamma_size, Qdot_meas):
+def control_calc(num_harmonics, gamma_size, gamma, Qdot_meas):
     a_0 = 0.0
 
     # Controller Parameters
     k_0 = .5
     c_psi = .1
     c_d = .1
-
-    gamma = np.linspace(-math.pi, math.pi-.017, gamma_size)
+#    global gamma
     dg = gamma[2] - gamma[1]
     Qdot_WF = [0]*gamma_size
     Qdot_SF = [0]*gamma_size
@@ -86,6 +90,8 @@ def control_calc(num_harmonics, gamma_size, Qdot_meas):
     for n in range(num_harmonics):
         a[n] = 0.0
         b[n] = 0.0
+
+
 
     # Compute a_0
     for i in range(gamma_size):
@@ -108,7 +114,7 @@ def control_calc(num_harmonics, gamma_size, Qdot_meas):
 
     # Calculate Qdot_SF
     Qdot_SF = np.subtract(Qdot_meas, Qdot_WF)
-    
+
     mean = np.mean(Qdot_SF)
     std_dev = 0.0
     for i in range(gamma_size):
@@ -150,29 +156,29 @@ class Optic_Flow_Calculator:
         self.lk_params = dict( winSize  = (25,25),
                                maxLevel = 5,
                                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-        
+
         # FOF and Residual SF publishing
         self.FR_pub = rospy.Publisher("FR_data", FOF_and_ResidualMsg, queue_size=10)
-
-        # Raw Image Subscriber
-        self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
-
-        # Publish yaw rate command
-        self.yaw_rate_cmd_pub = rospy.Publisher("controller_out/yaw_rate_cmd", YawRateCmdMsg, queue_size=10)
-
+ 
         # Define image size parameters
         self.rows = 0
         self.cols = 0
         self.num_rings = 5
-        self.gamma_size = 40
+        self.gamma_size =  60
         self.num_harmonics = 4
         yaw_rate_cmd = 0
         self.OF_tang_prev = [0.0]*self.gamma_size
         self.OF_tang_prev_filtered = [0.0]*self.gamma_size
-        self.OF_tang_curr = [0.0]*self.gamma_size        
+        self.OF_tang_curr = [0.0]*self.gamma_size
+        self.gamma_list = np.linspace(-math.pi, math.pi-.017, self.gamma_size)
+        self.cos_g = [0.0]*self.gamma_size
+        self.sin_g = [0.0]*self.gamma_size
+        for i in range(self.gamma_size):
+	    self.cos_g[i] = math.cos(self.gamma_list[i])
+            self.sin_g[i] = math.sin(self.gamma_list[i])
 
     def image_callback(self,image):
-        rospy.loginfo_throttle(1, "img")
+        rospy.loginfo_throttle(2,"Streaming")
         try: # if there is an image
             # Acquire the image, and convert to single channel gray image
             curr_image = self.bridge.imgmsg_to_cv2(image, "mono8")
@@ -183,7 +189,7 @@ class Optic_Flow_Calculator:
                     curr_image = curr_image[:,:,0] # shape should now be (rows, columns)
 
             # optional: resize the image
-            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
+            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5)
 
             # Flip the image (mirror vertically)
             curr_image = cv2.flip(curr_image, 1)
@@ -202,7 +208,7 @@ class Optic_Flow_Calculator:
                 self.rows = curr_image.shape[0]
                 self.cols = curr_image.shape[1]
                 self.last_time = curr_time
-                self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.num_rings)
+                self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.gamma, self.num_rings, self.cos_g, self.sin_g)
                 return # skip the rest of this loop
 
             # get time between images
@@ -215,15 +221,16 @@ class Optic_Flow_Calculator:
             # calculate flow field
             flow = new_position_of_tracked_points - self.points_to_track
 
+
             # draw the flow field
             # draw_optic_flow_field(curr_image, self.points_to_track, flow)
 
             # Compute Tangential OF
             self.OF_tang_prev = self.OF_tang_curr
-            self.OF_tang_curr = average_ring_flow(self, self.num_rings,self.gamma_size,flow)
-                      
+            self.OF_tang_curr = average_ring_flow(self, self.num_rings, self.gamma_size, self.gamma_list, flow)
+
             # Compute Fourier coefficients and yaw control Command
-            FR_yaw_rate_cmd, Qdot_SF, FR_thresh = control_calc(self.num_harmonics, self.gamma_size, self.OF_tang_curr)
+            FR_yaw_rate_cmd, Qdot_SF, FR_thresh = control_calc(self.num_harmonics, self.gamma_size, self.gamma_list, self.OF_tang_curr)
 
             ##### ADD ALL NECESSARY MESSAGES ######
             msg = FOF_and_ResidualMsg()
@@ -231,9 +238,9 @@ class Optic_Flow_Calculator:
 #            msg.FOF_OF_SF = R_FOF
 #            msg.FOF_threshold = FOF_thresh
 #            msg.FOF_yaw_rate_cmd = FOF_yaw_rate_cmd
-            msg.FR_Qdot_SF = Qdot_SF 
+            msg.FR_Qdot_SF = Qdot_SF
             msg.FR_yaw_rate_cmd = FR_yaw_rate_cmd
-            msg.FR_threshold = FR_thresh  
+            msg.FR_threshold = FR_thresh
 
             self.FR_pub.publish(msg)
 
