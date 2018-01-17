@@ -19,18 +19,18 @@ from sensor_msgs.msg import Image
 # message imports specific to this package
 from object_avoidance.msg import FlowRingOutMsg
 from std_msgs.msg import Float32
-
+from std_msgs.msg import Bool
 
 def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     points_to_track = []
     x_center = int(image.shape[0]/2)
     y_center = int(image.shape[1]/2)
     # i.r. good for 160x120 image size
-#    inner_radius = 50
-    inner_radius = 25
+    #inner_radius = 25
+    inner_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 1
+    dr = 2
 
     for ring in range(num_rings):
        for g in gamma:
@@ -83,6 +83,8 @@ class Optic_Flow_Calculator:
         
         # Flow Ring Publisher
         self.Flow_rings_pub = rospy.Publisher('flow_rings', FlowRingOutMsg, queue_size=10)      
+ 
+        self.status_pub = rospy.Publisher('flow_status', Bool, queue_size = 10)
 
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
@@ -92,6 +94,7 @@ class Optic_Flow_Calculator:
         self.cols = 0
         self.num_rings = 5
         self.gamma_size = 60
+        self.flow_status_msg = False
 
     def image_callback(self,image):
         try: # if there is an image
@@ -131,6 +134,7 @@ class Optic_Flow_Calculator:
                 self.last_time = curr_time
                 self.points_to_track = define_rings_at_which_to_track_optic_flow(curr_image, self.gamma_size, self.num_rings)
 #                self.gamma_ring_points = define_gamma_ring_points(curr_image, self.gamma_size)
+                self.flow_status_msg = True
                 return # skip the rest of this loop
 
             # get time between images
@@ -150,7 +154,7 @@ class Optic_Flow_Calculator:
             msg.Qdot_v = flow[:,0,0]
             self.Flow_rings_pub.publish(msg)
 #            rospy.loginfo_throttle(50,flow[:,0,1])
-
+            self.status_pub.publish(self.flow_status_msg)
             # save current image and time for next loop
             self.prev_image = curr_image
 #Moved up            self.last_time = curr_time

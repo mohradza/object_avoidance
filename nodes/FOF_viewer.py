@@ -56,7 +56,7 @@ def draw_optic_flow_signal(color_image, flow_signal, gamma_size):
     color_green = [0,255,0]
     linewidth = 1
     
-    radius = 55
+    radius = 115
     sig_scale = 100
     gamma = np.linspace(-math.pi, math.pi - .017, gamma_size)
 
@@ -85,10 +85,10 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     x_center = int(image.shape[0]/2)
     y_center = int(image.shape[1]/2)
     # This needs to be changed for 320 x 240 image and parabolics mirror
-    inner_radius = 50
+    inner_radius = 100
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 2
+    dr = 5
 
     for ring in range(num_rings):
        for g in gamma:
@@ -242,8 +242,8 @@ class Optic_Flow_Calculator:
                     curr_image = curr_image[:,:,0] # shape should now be (rows, columns)
 
             # optional: resize the image
-            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
-            color_image = cv2.resize(color_image, (0,0), fx=0.5, fy=0.5) 
+#            curr_image = cv2.resize(curr_image, (0,0), fx=0.5, fy=0.5) 
+#            color_image = cv2.resize(color_image, (0,0), fx=0.5, fy=0.5) 
             
             # Flip the image (mirror vertically)
             curr_image = cv2.flip(curr_image, 1)
