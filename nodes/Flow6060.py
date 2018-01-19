@@ -42,29 +42,6 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
   
     return points_to_track
 
-def average_ring_flow(self, num_rings, gamma_size,flow):
-    total_OF_tang = [0]*gamma_size
-    OF_reformat = [0]*gamma_size
-    gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
-    for ring in range(num_rings):
-        for i in range(gamma_size):
-                index = ring*gamma_size + i
-                # According to Jishnu's MATLAB code:
-                #u = flow[index][1,0]
-                # v = flow[index][0,0]
-                total_OF_tang[i] = total_OF_tang[i]+(-1*flow[index][0,0]*math.cos(gamma[i])+flow[index][0,1]*math.sin(gamma[i]))
-
-    total_OF_tang[:] = [x / num_rings for x in total_OF_tang]
-
-    # Reformat so that optic flow is -pi -> pi
-    for i in range(gamma_size):
-        if (i < (gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[gamma_size//2 - i]
-        if (i >=(gamma_size//2)):
-            OF_reformat[i] = -total_OF_tang[(gamma_size + gamma_size//2 - 1)-i]
-
-    return OF_reformat
-
 
 class Optic_Flow_Calculator:
     def __init__(self):
@@ -83,8 +60,6 @@ class Optic_Flow_Calculator:
         
         # Flow Ring Publisher
         self.Flow_rings_pub = rospy.Publisher('flow_rings', FlowRingOutMsg, queue_size=10)      
- 
-        self.status_pub = rospy.Publisher('flow_status', Bool, queue_size = 10)
 
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
@@ -153,8 +128,6 @@ class Optic_Flow_Calculator:
             msg.Qdot_u = flow[:,0,1]
             msg.Qdot_v = flow[:,0,0]
             self.Flow_rings_pub.publish(msg)
-#            rospy.loginfo_throttle(50,flow[:,0,1])
-            self.status_pub.publish(self.flow_status_msg)
             # save current image and time for next loop
             self.prev_image = curr_image
 #Moved up            self.last_time = curr_time
