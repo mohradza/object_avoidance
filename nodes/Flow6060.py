@@ -29,7 +29,7 @@ def define_rings_at_which_to_track_optic_flow(image, gamma_size, num_rings):
     inner_radius = 50
     gamma = np.linspace(0, 2*math.pi-.017, gamma_size)
     dg = gamma[2] - gamma[1]
-    dr = 2
+    dr = 4
 
     for ring in range(num_rings):
        for g in gamma:
@@ -53,7 +53,7 @@ class Optic_Flow_Calculator:
         self.last_time = 0
 
         # Lucas Kanade Optic Flow parameters
-        self.lk_params = dict( winSize  = (25,25),
+        self.lk_params = dict( winSize  = (12,12),
                                maxLevel = 5,
                                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
         
@@ -66,9 +66,9 @@ class Optic_Flow_Calculator:
         # Define image size parameters
         self.rows = 0
         self.cols = 0
-        self.num_rings = 5
+        self.num_rings = 3
         self.gamma_size = 60
-        self.pixel_scale = 6
+        self.pixel_scale = 15
 
     def image_callback(self,image):
         try: # if there is an image
@@ -124,8 +124,8 @@ class Optic_Flow_Calculator:
 
             # Output the flow rings
             msg = FlowRingOutMsg()
-            msg.Qdot_u = flow[:,0,1]
-            msg.Qdot_v = flow[:,0,0]
+            msg.Qdot_u = flow[:,0,0]
+            msg.Qdot_v = flow[:,0,1]
             self.Flow_rings_pub.publish(msg)
             # save current image and time for next loop
             self.prev_image = curr_image
